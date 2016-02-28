@@ -1,0 +1,173 @@
+---
+title: "Practical Machine Learning - Human Activity Recognition"
+subtitle: "Coursera Practical Machine Learning Project"
+author: "Kevin Dyke"
+date: "28 February 2016"
+output: html_document
+---
+
+#Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+#Project Summary
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. The project may use any of the other variables to predict with. This report describes how I built the model, how I used cross validation, what I think the expected out of sample error is, and why I made the choices you did. The prediction model is also used to predict 20 different test cases. 
+
+#Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The first thing to do is to download the data if necessary
+```{r}
+# set the working directory
+setwd("C:/coursera/Data Science/machine learning/Project/Coursera-Data-Science-Machine-Learning-Project")
+
+# set up variables describing data locations
+train_Url <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_Url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- "./data/pml-training.csv"
+testing  <- "./data/pml-testing.csv"
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(training)) {
+  download.file(train_Url, destfile=training, mode = "w")
+}
+if (!file.exists(testing)) {
+  download.file(test_Url, destfile=testing, mode = "w")
+}
+
+# read the data into memory and report the sizes
+train <- read.csv(training)
+test  <- read.csv(testing)
+dim(train)
+dim(test)
+```
+
+#Explorary Data Analysis and Data Cleaning
+
+The training set consists of `r nrow(train)` observations of  `r ncol(train)` variables. Whereas the test set consists of `r nrow(test)` observations of `r ncol(test)` variables. This is a very large number of variables which could cause problems for computational intense operations. Therefore we need to reduce the number of variables in the training set.
+
+A summary of the first twenty observations shows that the data contains many unknown values. These columns can be removed.
+```{r}
+str(train,list.len=20)
+```
+
+The first seven variables are used for logging purposes and so can be removed. Also any column with zero variability can be removed. This can be achieved using the nearZeroVar method in the Caret package.
+
+```{r}
+train <- train[, -(1:7)] # remove the columns used for logging purposes
+test <- test[,-(1:7)]
+library(caret,quietly = TRUE)
+train <- train[, colSums(is.na(train)) == 0] # remove any columns containg NAs
+test  <- test[, colSums(is.na(test)) == 0]   
+
+nzvVar <- nearZeroVar(train) # obtain a list of columns with zero variability
+train <- train[,-nzvVar]     # and remove them from the training set
+```
+
+After cleaning the training set consists of `r nrow(train)` observations of  `r ncol(train)` variables and the test set consists of `r nrow(test)` observations of `r ncol(test)` variables.
+
+#Create Training and Validation Sets
+
+The training set needs to be divided into two subsets. The first set will be used for training purposes. The second will be used to validate the training. This allows the test set to be left alone for the final predictions. I decided to use a validation size of 25%.
+
+
+```{r}
+# choose 75% of the training data
+choosen <- createDataPartition(y=train$classe, p=0.75, list=FALSE)
+# create the training set
+training  <- train[choosen, ]
+# create the validation by selecting the remainding 25%
+validation <- train[-choosen, ]
+```
+
+There are `r nrow(training)` rows in the training set and `r nrow(validation)` rows in the validation model.
+
+#Fitting A Prediction Model
+
+A Random Forest model would seem to be a good prediction model for this project. The RF model will automatically select the most important variables. A list of the most important variables can be found in appendix A. The RF model has good robustness to the correlated covariates and outliers. A five fold cross validation process will be applied to the model. The number of trees used is limited to 250.
+
+```{r}
+library(randomForest,quietly = TRUE)
+# fit the prediction model
+fitRf <- train(classe ~ .,data=training,method="rf",trControl=trainControl(method="cv", 5), ntree=250)
+fitRf # display the results
+```
+This model is plotted in the appendix B.
+
+The next step is to apply the model to the validation data and analyse the results via a confusion Matrix.
+
+```{r}
+validationRf <- predict(fitRf, validation)
+confusionMatrix(validation$classe, validationRf)
+```
+
+Then the next step is to extract the accuracy figures.
+```{r}
+accuracy <- postResample(validationRf, validation$classe)
+accuracy
+```
+
+The accuracy is `r round(accuracy[1] * 100,2)`% and the Kappa is `r round(accuracy[2]*100,2)`%.
+
+#Out-Of-Sample Error
+
+The out of sample error is 1 - the testing accuracy
+```{r}
+oose <- 1 - as.numeric(confusionMatrix(validation$classe, validationRf)$overall[1])
+oose
+```
+
+So the out of sample error is `r round(oose * 100,2)`%.
+
+#Submitted Results
+
+The training set prediction model can now be used to predict the answers to the twenty observations in the test set.
+
+```{r}
+answers <- predict(fitRf, test) # get the answers to the twenty test questions
+answers                         # display the answers
+```
+
+These answers were submitted to the Coursera website and passed with a mark of 100%.
+
+#Conclusion
+
+The training set was reduced from 160 observations to 53 allowing faster computation. A Random Forest model was a good predict model with an accuracy of `r round(accuracy[1] * 100,2)`% and an out of sample error of `r round(oose * 100,2)`%. 
+
+This model was applied to the test set and the predicted answers passed the project quiz with a mark of 100%.
+
+
+#References
+
+The author acknowledges the generosity of Groupware@LES in allowing the use of their data in this project.
+
+The citation is:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+#Appendix A - Variable Important
+
+Below is a list of the most important variables in the Random Forest Model
+```{r}
+VarImp <- varImp(fitRf)
+VarImp
+```
+
+#Appendix B - Random Forest Model
+
+```{r}
+library(rpart,quietly = TRUE)
+library(rpart.plot, quietly = T)
+treeModel <- rpart(classe ~ ., data=train, method="class")
+prp(treeModel)
+```
